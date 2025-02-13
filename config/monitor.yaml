@@ -1,0 +1,6 @@
+RABBIT_URL: "amqp://guest:guest@rabbitmq:5672/"
+EXCHANGE_NAME: "wallet_exchange"
+QUEUE_NAME: "wallet_queue"
+ROUTING_KEY: "wallet.check"
+CHECK_INTERVAL: "10s"
+GET_SIGNATURES_LIMIT_RPC: 1000

@@ -1,0 +1,132 @@
+version: '3.8'
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse
+    ports:
+      - "8123:8123"   # HTTP port
+      - "9000:9000"   # Native port
+      - "9009:9009"   # Inter-server port
+    volumes:
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    environment:
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=clickhouse
+      - CLICKHOUSE_DB=default
+
+  rabbitmq:
+    image: heidiks/rabbitmq-delayed-message-exchange:latest
+    ports:
+      - "5672:5672"   # AMQP protocol port
+      - "15672:15672" # Management UI
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=rootpassword
+      - MYSQL_DATABASE=mydb
+      - MYSQL_USER=user
+      - MYSQL_PASSWORD=userpassword
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      target: api
+    ports:
+      - "8080:8080"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+    restart: on-failure:3
+    volumes:
+      - ./config:/app/config
+
+  ch-ui:
+    image: ghcr.io/caioricciuti/ch-ui:latest
+    container_name: ch-ui
+    ports:
+      - "5521:5521"    # Web UI port
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    environment:
+      - VITE_CLICKHOUSE_URL=http://127.0.0.1:8123
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASS=clickhouse
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: phpmyadmin
+    ports:
+      - "8081:80"
+    environment:
+      - PMA_HOST=mysql
+      - PMA_PORT=3306
+      - MYSQL_ROOT_PASSWORD=rootpassword
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  monitor-producer:
+    build:
+      context: .
+      target: monitor-producer
+    depends_on:
+      api:
+        condition: service_started
+
+  monitor-consumer:
+    build:
+      context: .
+      target: monitor-consumer
+    depends_on:
+      api:
+        condition: service_started
+
+  txdetails-producer:
+    build:
+      context: .
+      target: txdetails-producer
+    depends_on:
+      api:
+        condition: service_started
+
+  txdetails-consumer:
+    build:
+      context: .
+      target: txdetails-consumer
+    deploy:
+      replicas: 1
+    depends_on:
+      api:
+        condition: service_started

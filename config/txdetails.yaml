@@ -1,0 +1,5 @@
+RABBIT_URL: "amqp://guest:guest@rabbitmq:5672/"
+EXCHANGE_NAME: "txdetails_exchange"
+QUEUE_NAME: "txdetails_queue"
+ROUTING_KEY: "transaction.details"
+CHECK_INTERVAL: "10s"

@@ -1,0 +1,7 @@
+SOLANA_RPC_URL: "https://sleek-responsive-sunset.solana-mainnet.quiknode.pro/feacd629153d576ac4567adf0471cb67fcb5c8d7/"
+DB_HOSTS: 
+  - "clickhouse:9000"
+DB_NAME: "default"
+DB_USER: "default"
+DB_PASSWORD: "clickhouse"
+DB_DEBUG: true
