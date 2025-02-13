@@ -1,7 +1,18 @@
-SOLANA_RPC_URL: "https://sleek-responsive-sunset.solana-mainnet.quiknode.pro/feacd629153d576ac4567adf0471cb67fcb5c8d7/"
-DB_HOSTS: 
+# ClickHouse Configuration
+CH_HOSTS: 
   - "clickhouse:9000"
-DB_NAME: "default"
-DB_USER: "default"
-DB_PASSWORD: "clickhouse"
-DB_DEBUG: true
+CH_NAME: "default"
+CH_USER: "default"
+CH_PASSWORD: "clickhouse"
+CH_DEBUG: true
+
+# MySQL Configuration
+MYSQL_HOST: "mysql"
+MYSQL_PORT: 3306
+MYSQL_NAME: "solanadb"
+MYSQL_USER: "gosol"
+MYSQL_PASSWORD: "userpassword"
+MYSQL_DEBUG: true
+
+# Solana Configuration
+SOLANA_RPC_URL: "https://sleek-responsive-sunset.solana-mainnet.quiknode.pro/feacd629153d576ac4567adf0471cb67fcb5c8d7/"

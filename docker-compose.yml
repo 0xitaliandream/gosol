@@ -44,9 +44,9 @@ services:
     ports:
       - "3306:3306"
     environment:
-      - MYSQL_ROOT_PASSWORD=rootpassword
-      - MYSQL_DATABASE=mydb
-      - MYSQL_USER=user
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=solanadb
+      - MYSQL_USER=gosol
       - MYSQL_PASSWORD=userpassword
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
@@ -113,20 +113,20 @@ services:
       api:
         condition: service_started
 
-  txdetails-producer:
-    build:
-      context: .
-      target: txdetails-producer
-    depends_on:
-      api:
-        condition: service_started
+  # txdetails-producer:
+  #   build:
+  #     context: .
+  #     target: txdetails-producer
+  #   depends_on:
+  #     api:
+  #       condition: service_started
 
-  txdetails-consumer:
-    build:
-      context: .
-      target: txdetails-consumer
-    deploy:
-      replicas: 1
-    depends_on:
-      api:
-        condition: service_started
+  # txdetails-consumer:
+  #   build:
+  #     context: .
+  #     target: txdetails-consumer
+  #   deploy:
+  #     replicas: 1
+  #   depends_on:
+  #     api:
+  #       condition: service_started

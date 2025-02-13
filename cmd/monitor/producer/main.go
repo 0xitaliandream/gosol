@@ -3,14 +3,16 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"gosol/config"
-	"gosol/internal/db"
-	"gosol/internal/models"
+	"gosol/internal/db/clickhouse"
+	"gosol/internal/db/mysql"
+	"gosol/internal/rabbitmq"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sirupsen/logrus"
@@ -20,15 +22,16 @@ import (
 
 // Producer struttura principale del producer
 type Producer struct {
-	conn    *amqp.Connection
-	channel *amqp.Channel
-	db      *db.Database
-	cfg     *config.MonitorConfig
-	log     *logrus.Logger
+	conn         *amqp.Connection
+	channel      *amqp.Channel
+	clickhouseDB *clickhouse.Database
+	mysqlDB      *mysql.Database
+	cfg          *config.MonitorConfig
+	log          *logrus.Logger
 }
 
 // NewProducer crea una nuova istanza del producer
-func NewProducer(cfg *config.MonitorConfig, db *db.Database, log *logrus.Logger) (*Producer, error) {
+func NewProducer(cfg *config.MonitorConfig, clickhouseDB *clickhouse.Database, mysqlDB *mysql.Database, log *logrus.Logger) (*Producer, error) {
 	conn, err := amqp.Dial(cfg.RabbitURL)
 	if err != nil {
 		return nil, err
@@ -41,11 +44,12 @@ func NewProducer(cfg *config.MonitorConfig, db *db.Database, log *logrus.Logger)
 	}
 
 	producer := &Producer{
-		conn:    conn,
-		channel: ch,
-		db:      db,
-		cfg:     cfg,
-		log:     log,
+		conn:         conn,
+		channel:      ch,
+		clickhouseDB: clickhouseDB,
+		mysqlDB:      mysqlDB,
+		cfg:          cfg,
+		log:          log,
 	}
 
 	if err := producer.setup(); err != nil {
@@ -135,17 +139,22 @@ func (p *Producer) Close() {
 
 // produceNewWallets pubblica i nuovi wallet sulla coda
 func (p *Producer) produceNewWallets(ctx context.Context) error {
-	walletsToMonitor := []models.Wallet{}
-	err := p.db.GetWalletsToMonitor(ctx, &walletsToMonitor)
-	if err != nil {
-		return err
+	var walletsToMonitor []mysql.Wallet
+
+	if err := p.mysqlDB.GetDB().WithContext(ctx).
+		Joins("LEFT JOIN wallet_monitor_jobs ON wallets.id = wallet_monitor_jobs.wallet_id").
+		Where("wallet_monitor_jobs.wallet_id IS NULL OR " +
+			"(wallet_monitor_jobs.last_enqueued_at < NOW() - INTERVAL 1 HOUR AND wallet_monitor_jobs.last_processed_at IS NULL) OR " +
+			"wallet_monitor_jobs.last_processed_at < NOW() - INTERVAL 1 HOUR").
+		Find(&walletsToMonitor).Error; err != nil {
+		return fmt.Errorf("failed to get wallets to monitor: %w", err)
 	}
 
 	pubCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
 	for _, wallet := range walletsToMonitor {
-		msg := models.WalletRabbitMessage{
+		msg := rabbitmq.WalletRabbitMessage{
 			ID: wallet.ID,
 		}
 
@@ -173,7 +182,11 @@ func (p *Producer) produceNewWallets(ctx context.Context) error {
 			continue
 		}
 
-		if err := p.db.UpdateWalletMonitorTimestamp(ctx, &wallet, false); err != nil {
+		if err := p.mysqlDB.GetDB().WithContext(ctx).
+			Exec(`INSERT INTO wallet_monitor_jobs (wallet_id, last_enqueued_at, created_at, updated_at)
+                  VALUES (?, NOW(), NOW(), NOW())
+                  ON DUPLICATE KEY UPDATE last_enqueued_at = NOW(), updated_at = NOW()`,
+				wallet.ID).Error; err != nil {
 			p.log.Errorf("Failed to update monitor timestamp: %v", err)
 			continue
 		}
@@ -214,19 +227,32 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	database, err := db.NewDatabase(db.Config{
-		Hosts:    cfg.BaseConfig.DBHosts,
-		Database: cfg.BaseConfig.DBName,
-		Username: cfg.BaseConfig.DBUser,
-		Password: cfg.BaseConfig.DBPassword,
-		Debug:    cfg.BaseConfig.DBDebug,
+	clickhouseDB, err := clickhouse.NewDatabase(clickhouse.Config{
+		Hosts:    cfg.CHHosts,
+		Database: cfg.CHDb,
+		Username: cfg.CHUser,
+		Password: cfg.CHPassword,
+		Debug:    cfg.CHDebug,
 	}, log)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		log.Fatalf("Errore nella connessione al database: %v", err)
 	}
-	defer database.Close()
+	defer clickhouseDB.Close()
 
-	producer, err := NewProducer(cfg, database, log)
+	mysqlDB, err := mysql.NewDatabase(mysql.Config{
+		Host:     cfg.MySQLHost,
+		Port:     cfg.MySQLPort,
+		Database: cfg.MySQLDb,
+		Username: cfg.MySQLUser,
+		Password: cfg.MySQLPassword,
+		Debug:    cfg.MySQLDebug,
+	}, log)
+	if err != nil {
+		log.Fatalf("Errore nella connessione al database: %v", err)
+	}
+	defer mysqlDB.Close()
+
+	producer, err := NewProducer(cfg, clickhouseDB, mysqlDB, log)
 	if err != nil {
 		log.Fatalf("Failed to create producer: %v", err)
 	}

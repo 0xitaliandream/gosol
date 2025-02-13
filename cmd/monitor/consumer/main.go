@@ -10,12 +10,14 @@ import (
 	"time"
 
 	"gosol/config"
-	"gosol/internal/db"
-	"gosol/internal/models"
+	"gosol/internal/db/clickhouse"
+	"gosol/internal/db/mysql"
+	"gosol/internal/rabbitmq"
 	"gosol/internal/solana"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 )
 
 type TransactionBoundaries struct {
@@ -26,15 +28,16 @@ type TransactionBoundaries struct {
 }
 
 type Consumer struct {
-	conn    *amqp.Connection
-	channel *amqp.Channel
-	cfg     *config.MonitorConfig
-	log     *logrus.Logger
-	db      *db.Database
-	solana  *solana.Client
+	conn         *amqp.Connection
+	channel      *amqp.Channel
+	cfg          *config.MonitorConfig
+	log          *logrus.Logger
+	clickhouseDB *clickhouse.Database
+	mysqlDB      *mysql.Database
+	solana       *solana.Client
 }
 
-func NewConsumer(cfg *config.MonitorConfig, db *db.Database, solana *solana.Client, log *logrus.Logger) (*Consumer, error) {
+func NewConsumer(cfg *config.MonitorConfig, clickhouseDB *clickhouse.Database, mysqlDB *mysql.Database, solana *solana.Client, log *logrus.Logger) (*Consumer, error) {
 	conn, err := amqp.Dial(cfg.RabbitURL)
 	if err != nil {
 		return nil, err
@@ -47,12 +50,13 @@ func NewConsumer(cfg *config.MonitorConfig, db *db.Database, solana *solana.Clie
 	}
 
 	consumer := &Consumer{
-		conn:    conn,
-		channel: ch,
-		cfg:     cfg,
-		log:     log,
-		db:      db,
-		solana:  solana,
+		conn:         conn,
+		channel:      ch,
+		cfg:          cfg,
+		log:          log,
+		clickhouseDB: clickhouseDB,
+		mysqlDB:      mysqlDB,
+		solana:       solana,
 	}
 
 	if err := consumer.setup(); err != nil {
@@ -138,7 +142,7 @@ func (c *Consumer) Close() {
 	}
 }
 
-func (c *Consumer) scheduleNextCheck(wallet models.WalletRabbitMessage) error {
+func (c *Consumer) scheduleNextCheck(wallet rabbitmq.WalletRabbitMessage) error {
 	body, err := json.Marshal(wallet)
 	if err != nil {
 		return err
@@ -163,7 +167,7 @@ func (c *Consumer) scheduleNextCheck(wallet models.WalletRabbitMessage) error {
 }
 
 func (c *Consumer) processMessage(ctx context.Context, delivery amqp.Delivery) error {
-	var walletQueuedMessage models.WalletRabbitMessage
+	var walletQueuedMessage rabbitmq.WalletRabbitMessage
 	if err := json.Unmarshal(delivery.Body, &walletQueuedMessage); err != nil {
 		return err
 	}
@@ -171,10 +175,12 @@ func (c *Consumer) processMessage(ctx context.Context, delivery amqp.Delivery) e
 	c.log.WithFields(logrus.Fields{
 		"wallet_id": walletQueuedMessage.ID}).Info("Processing wallet")
 
-	wallet := models.Wallet{}
-	err := c.db.GetWallet(ctx, walletQueuedMessage.ID, &wallet)
-	if err != nil {
+	// Get wallet direttamente con GORM
+	var wallet mysql.Wallet
+	if err := c.mysqlDB.GetDB().WithContext(ctx).
+		First(&wallet, walletQueuedMessage.ID).Error; err != nil {
 		c.log.Errorf("Failed to get wallet: %v", err)
+		return err
 	}
 
 	// Process wallet transactions
@@ -183,16 +189,22 @@ func (c *Consumer) processMessage(ctx context.Context, delivery amqp.Delivery) e
 		return err
 	}
 
-	// Update last check timestamp
-	if err := c.db.UpdateWalletMonitorTimestamp(ctx, &wallet, true); err != nil {
+	// Update monitor job timestamp usando NOW() di MySQL
+	if err := c.mysqlDB.GetDB().WithContext(ctx).
+		Exec(`UPDATE wallet_monitor_jobs 
+              SET last_processed_at = NOW(), 
+                  updated_at = NOW() 
+              WHERE wallet_id = ?`,
+			wallet.ID).Error; err != nil {
 		c.log.Errorf("Failed to update monitor timestamp: %v", err)
+		return err
 	}
 
 	// Schedule next check
 	return c.scheduleNextCheck(walletQueuedMessage)
 }
 
-func (c *Consumer) processWalletTransactions(ctx context.Context, w *models.Wallet) error {
+func (c *Consumer) processWalletTransactions(ctx context.Context, w *mysql.Wallet) error {
 	boundaries := TransactionBoundaries{}
 	err := c.getTransactionBoundaries(ctx, &boundaries, w)
 	if err != nil {
@@ -202,31 +214,39 @@ func (c *Consumer) processWalletTransactions(ctx context.Context, w *models.Wall
 	return c.processTransactions(ctx, w, &boundaries)
 }
 
-func (c *Consumer) getTransactionBoundaries(ctx context.Context, boundaries *TransactionBoundaries, w *models.Wallet) error {
-	tx := &models.Transaction{}
-
-	if err := c.db.GetNewestTransaction(ctx, tx, w); err != nil {
-		return err
+func (c *Consumer) getTransactionBoundaries(ctx context.Context, boundaries *TransactionBoundaries, w *mysql.Wallet) error {
+	// Get newest transaction (highest sequence)
+	var newestTx mysql.Transaction
+	if err := c.mysqlDB.GetDB().WithContext(ctx).
+		Where("wallet_id = ?", w.ID).
+		Order("sequence DESC").
+		First(&newestTx).Error; err != nil && err != gorm.ErrRecordNotFound {
+		return fmt.Errorf("failed to get newest transaction: %w", err)
 	}
 
-	if tx.Signature != "" {
-		boundaries.newestSignature = tx.Signature
-		boundaries.newestSequence = tx.Sequence
+	if newestTx.Signature != "" {
+		boundaries.newestSignature = newestTx.Signature
+		boundaries.newestSequence = newestTx.Sequence
 	}
 
-	if err := c.db.GetLastTransaction(ctx, tx, w); err != nil {
-		return err
+	// Get oldest transaction (lowest sequence)
+	var oldestTx mysql.Transaction
+	if err := c.mysqlDB.GetDB().WithContext(ctx).
+		Where("wallet_id = ?", w.ID).
+		Order("sequence ASC").
+		First(&oldestTx).Error; err != nil && err != gorm.ErrRecordNotFound {
+		return fmt.Errorf("failed to get oldest transaction: %w", err)
 	}
 
-	if tx.Signature != "" {
-		boundaries.lastSignature = tx.Signature
-		boundaries.lastSequence = tx.Sequence
+	if oldestTx.Signature != "" {
+		boundaries.lastSignature = oldestTx.Signature
+		boundaries.lastSequence = oldestTx.Sequence
 	}
 
 	return nil
 }
 
-func (c *Consumer) processTransactions(ctx context.Context, wallet *models.Wallet, boundaries *TransactionBoundaries) error {
+func (c *Consumer) processTransactions(ctx context.Context, wallet *mysql.Wallet, boundaries *TransactionBoundaries) error {
 	c.log.Infof("Processing wallet %s from %s to %s",
 		wallet.Address, boundaries.lastSignature, boundaries.newestSignature)
 
@@ -241,7 +261,7 @@ func (c *Consumer) processTransactions(ctx context.Context, wallet *models.Walle
 			return nil
 		} else {
 			wallet.IsLowerBoundSynced = true
-			if err := c.db.UpdateWallet(ctx, wallet); err != nil {
+			if err := c.mysqlDB.GetDB().WithContext(ctx).Save(wallet).Error; err != nil {
 				return fmt.Errorf("failed to update wallet: %w", err)
 			}
 		}
@@ -262,7 +282,7 @@ func (c *Consumer) processTransactions(ctx context.Context, wallet *models.Walle
 	return nil
 }
 
-func (c *Consumer) checkForOlderTransactions(w *models.Wallet, boundaries *TransactionBoundaries) (bool, error) {
+func (c *Consumer) checkForOlderTransactions(w *mysql.Wallet, boundaries *TransactionBoundaries) (bool, error) {
 	transactions, err := c.solana.GetSignaturesForAddress(w.Address, "", boundaries.lastSignature, 1)
 	if err != nil {
 		return false, err
@@ -270,7 +290,7 @@ func (c *Consumer) checkForOlderTransactions(w *models.Wallet, boundaries *Trans
 	return len(transactions) > 0, nil
 }
 
-func (c *Consumer) checkForNewerTransactions(w *models.Wallet, boundaries *TransactionBoundaries) (bool, error) {
+func (c *Consumer) checkForNewerTransactions(w *mysql.Wallet, boundaries *TransactionBoundaries) (bool, error) {
 	transactions, err := c.solana.GetSignaturesForAddress(w.Address, boundaries.newestSignature, "", 1)
 	if err != nil {
 		return false, fmt.Errorf("failed to check newer transactions: %w", err)
@@ -278,7 +298,7 @@ func (c *Consumer) checkForNewerTransactions(w *models.Wallet, boundaries *Trans
 	return len(transactions) > 0, nil
 }
 
-func (c *Consumer) processBackwardTransactions(ctx context.Context, w *models.Wallet, boundaries *TransactionBoundaries) error {
+func (c *Consumer) processBackwardTransactions(ctx context.Context, w *mysql.Wallet, boundaries *TransactionBoundaries) error {
 	before := boundaries.lastSignature
 	index := boundaries.lastSequence
 
@@ -303,7 +323,7 @@ func (c *Consumer) processBackwardTransactions(ctx context.Context, w *models.Wa
 	return nil
 }
 
-func (c *Consumer) processForwardTransactions(ctx context.Context, w *models.Wallet, boundaries *TransactionBoundaries) error {
+func (c *Consumer) processForwardTransactions(ctx context.Context, w *mysql.Wallet, boundaries *TransactionBoundaries) error {
 	until := boundaries.newestSignature
 	before := ""
 	index := boundaries.newestSequence
@@ -329,14 +349,13 @@ func (c *Consumer) processForwardTransactions(ctx context.Context, w *models.Wal
 	return nil
 }
 
-func (c *Consumer) saveTransactions(ctx context.Context, walletID string, transactions []models.Transaction, index *int64, increment bool) error {
+func (c *Consumer) saveTransactions(ctx context.Context, walletID uint, transactions []mysql.Transaction, index *int64, increment bool) error {
 	for _, tx := range transactions {
 		tx.WalletID = walletID
 		tx.Sequence = *index
 
-		if err := c.db.InsertTransaction(ctx, &tx); err != nil {
-			c.log.Errorf("Failed to save transaction %s: %v", tx.Signature, err)
-			continue
+		if err := c.mysqlDB.GetDB().WithContext(ctx).Create(&tx).Error; err != nil {
+			return fmt.Errorf("failed to save transaction: %w", err)
 		}
 
 		if increment {
@@ -389,21 +408,34 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	database, err := db.NewDatabase(db.Config{
-		Hosts:    cfg.BaseConfig.DBHosts,
-		Database: cfg.BaseConfig.DBName,
-		Username: cfg.BaseConfig.DBUser,
-		Password: cfg.BaseConfig.DBPassword,
-		Debug:    cfg.BaseConfig.DBDebug,
+	clickhouseDB, err := clickhouse.NewDatabase(clickhouse.Config{
+		Hosts:    cfg.CHHosts,
+		Database: cfg.CHDb,
+		Username: cfg.CHUser,
+		Password: cfg.CHPassword,
+		Debug:    cfg.CHDebug,
 	}, log)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		log.Fatalf("Errore nella connessione al database: %v", err)
 	}
-	defer database.Close()
+	defer clickhouseDB.Close()
+
+	mysqlDB, err := mysql.NewDatabase(mysql.Config{
+		Host:     cfg.MySQLHost,
+		Port:     cfg.MySQLPort,
+		Database: cfg.MySQLDb,
+		Username: cfg.MySQLUser,
+		Password: cfg.MySQLPassword,
+		Debug:    cfg.MySQLDebug,
+	}, log)
+	if err != nil {
+		log.Fatalf("Errore nella connessione al database: %v", err)
+	}
+	defer mysqlDB.Close()
 
 	solanaClient := solana.NewClient(cfg.SolanaRPCURL)
 
-	consumer, err := NewConsumer(cfg, database, solanaClient, log)
+	consumer, err := NewConsumer(cfg, clickhouseDB, mysqlDB, solanaClient, log)
 	if err != nil {
 		log.Fatalf("Failed to create consumer: %v", err)
 	}

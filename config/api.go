@@ -9,7 +9,7 @@ type APIConfig struct {
 }
 
 func LoadAPIConfig() (*APIConfig, error) {
-	base, err := loadBase()
+	base, err := LoadBase()
 	if err != nil {
 		return nil, err
 	}

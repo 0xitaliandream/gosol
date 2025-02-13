@@ -1,20 +1,17 @@
 package handlers
 
 import (
+	"gosol/internal/db/mysql"
 	"net/http"
 
-	"gosol/internal/db"
-	"gosol/internal/models"
-
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type WalletHandler struct {
-	db *db.Database
+	db *mysql.Database
 }
 
-func NewWalletHandler(database *db.Database) *WalletHandler {
+func NewWalletHandler(database *mysql.Database) *WalletHandler {
 	return &WalletHandler{
 		db: database,
 	}
@@ -30,49 +27,57 @@ func (h *WalletHandler) Create(c *gin.Context) {
 		return
 	}
 
-	newWallet := models.Wallet{
-		ID:      uuid.New().String(),
+	wallet := mysql.Wallet{
 		Address: input.Address,
 	}
 
-	err := h.db.InsertWallet(c.Request.Context(), &newWallet)
-	if err != nil {
+	// Usa direttamente GORM per l'insert
+	if err := h.db.GetDB().Create(&wallet).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
-		"id": newWallet.ID})
+		"id":      wallet.ID,
+		"address": wallet.Address,
+	})
 }
 
-// func (h *WalletHandler) List(c *gin.Context) {
-// 	wallets, err := h.db.ListWallets(c.Request.Context())
-// 	if err != nil {
-// 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-// 		return
-// 	}
+func (h *WalletHandler) List(c *gin.Context) {
+	var wallets []mysql.Wallet
 
-// 	c.JSON(http.StatusOK, wallets)
-// }
+	if err := h.db.GetDB().Find(&wallets).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
-// func (h *WalletHandler) Get(c *gin.Context) {
-// 	address := c.Param("address")
-// 	wallet, err := h.db.GetWallet(c.Request.Context(), address)
-// 	if err != nil {
-// 		c.JSON(http.StatusNotFound, gin.H{"error": "Wallet not found"})
-// 		return
-// 	}
+	c.JSON(http.StatusOK, wallets)
+}
 
-// 	c.JSON(http.StatusOK, wallet)
-// }
+func (h *WalletHandler) Get(c *gin.Context) {
+	address := c.Param("address")
+	var wallet mysql.Wallet
 
-// func (h *WalletHandler) Delete(c *gin.Context) {
-// 	address := c.Param("address")
-// 	err := h.db.DeleteWallet(c.Request.Context(), address)
-// 	if err != nil {
-// 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-// 		return
-// 	}
+	if err := h.db.GetDB().Where("address = ?", address).First(&wallet).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Wallet not found"})
+		return
+	}
 
-// 	c.JSON(http.StatusOK, gin.H{"message": "Wallet deleted successfully"})
-// }
+	c.JSON(http.StatusOK, wallet)
+}
+
+func (h *WalletHandler) Delete(c *gin.Context) {
+	address := c.Param("address")
+
+	result := h.db.GetDB().Where("address = ?", address).Delete(&mysql.Wallet{})
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
+		return
+	}
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Wallet not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Wallet deleted successfully"})
+}

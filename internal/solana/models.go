@@ -1,4 +1,4 @@
-package models
+package solana
 
 import (
 	"encoding/json"
@@ -130,21 +130,4 @@ type SolanaTransaction struct {
 	Transaction TransactionData    `json:"transaction"`
 	Meta        *TransactionMeta   `json:"meta,omitempty"`
 	Version     TransactionVersion `json:"version"`
-}
-
-type TransactionDetail struct {
-	ID                   string             `json:"id"`
-	TransactionID        string             `json:"transaction_id"`
-	Accounts             []Account          `json:"accounts"`
-	ComputeUnitsConsumed uint64             `json:"compute_units_consumed"`
-	Fee                  uint64             `json:"fee"`
-	Err                  string             `json:"err"`
-	LogMessages          []string           `json:"log_messages"`
-	PreTokenBalances     []TokenBalance     `json:"pre_token_balances"`
-	PostTokenBalances    []TokenBalance     `json:"post_token_balances"`
-	PreSolBalances       []uint64           `json:"pre_sol_balances"`
-	PostSolBalances      []uint64           `json:"post_sol_balances"`
-	Instructions         []Instruction      `json:"instructions"`
-	InnerInstructions    []InnerInstruction `json:"inner_instructions"`
-	Version              TransactionVersion `json:"version"`
 }

@@ -18,7 +18,7 @@ type MonitorConfig struct {
 }
 
 func LoadMonitorConfig() (*MonitorConfig, error) {
-	base, err := loadBase()
+	base, err := LoadBase()
 	if err != nil {
 		return nil, err
 	}

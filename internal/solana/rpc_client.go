@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"gosol/internal/models"
+	"gosol/internal/db/mysql"
 	"net/http"
 )
 
@@ -30,7 +30,7 @@ func NewClient(rpcURL string) *Client {
 	}
 }
 
-func (c *Client) GetSignaturesForAddress(address string, until string, before string, limit int) ([]models.Transaction, error) {
+func (c *Client) GetSignaturesForAddress(address string, until string, before string, limit int) ([]mysql.Transaction, error) {
 	// Costruisci i params includendo solo i campi non vuoti
 	params := []any{
 		address,
@@ -52,7 +52,9 @@ func (c *Client) GetSignaturesForAddress(address string, until string, before st
 		return nil, err
 	}
 
-	var signatures []models.Transaction
+	fmt.Println(string(response))
+
+	var signatures []mysql.Transaction
 	if err := json.Unmarshal(response, &signatures); err != nil {
 		return nil, fmt.Errorf("error unmarshaling signatures: %w", err)
 	}
@@ -61,7 +63,7 @@ func (c *Client) GetSignaturesForAddress(address string, until string, before st
 }
 
 // GetTransaction restituisce direttamente il json.RawMessage
-func (c *Client) GetTransaction(signature string) (*models.TransactionDetail, error) {
+func (c *Client) GetTransaction(signature string) (*SolanaTransaction, error) {
 	params := []any{
 		signature,
 		map[string]any{
@@ -75,28 +77,12 @@ func (c *Client) GetTransaction(signature string) (*models.TransactionDetail, er
 		return nil, err
 	}
 
-	var transaction models.SolanaTransaction
+	var transaction SolanaTransaction
 	if err := json.Unmarshal(response, &transaction); err != nil {
 		return nil, fmt.Errorf("error unmarshaling transaction: %w", err)
 	}
 
-	// Costruisci il TransactionDetail
-	transactionDetail := models.TransactionDetail{
-		Accounts:             transaction.Transaction.Message.AccountKeys,
-		Fee:                  transaction.Meta.Fee,
-		ComputeUnitsConsumed: transaction.Meta.ComputeUnitsConsumed,
-		Err:                  fmt.Sprintf("%v", transaction.Meta.Err),
-		LogMessages:          transaction.Meta.LogMessages,
-		PreTokenBalances:     transaction.Meta.PreTokenBalances,
-		PostTokenBalances:    transaction.Meta.PostTokenBalances,
-		PreSolBalances:       transaction.Meta.PreBalances,
-		PostSolBalances:      transaction.Meta.PostBalances,
-		Instructions:         transaction.Transaction.Message.Instructions,
-		InnerInstructions:    transaction.Meta.InnerInstructions,
-		Version:              transaction.Version,
-	}
-
-	return &transactionDetail, nil
+	return &transaction, nil
 }
 
 // Metodo helper per fare chiamate RPC

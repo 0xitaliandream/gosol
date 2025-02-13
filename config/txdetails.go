@@ -17,7 +17,7 @@ type TxDetailsConfig struct {
 }
 
 func LoadTxDetailsConfig() (*TxDetailsConfig, error) {
-	base, err := loadBase()
+	base, err := LoadBase()
 	if err != nil {
 		return nil, err
 	}

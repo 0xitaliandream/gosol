@@ -17,11 +17,11 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /gosol-monitor-producer cmd/monitor/pro
 # Build Consumer
 RUN CGO_ENABLED=0 GOOS=linux go build -o /gosol-monitor-consumer cmd/monitor/consumer/main.go
 
-# Build Producer
-RUN CGO_ENABLED=0 GOOS=linux go build -o /gosol-txdetails-producer cmd/txdetails/producer/main.go
+# # Build Producer
+# RUN CGO_ENABLED=0 GOOS=linux go build -o /gosol-txdetails-producer cmd/txdetails/producer/main.go
 
-# Build Consumer
-RUN CGO_ENABLED=0 GOOS=linux go build -o /gosol-txdetails-consumer cmd/txdetails/consumer/main.go
+# # Build Consumer
+# RUN CGO_ENABLED=0 GOOS=linux go build -o /gosol-txdetails-consumer cmd/txdetails/consumer/main.go
 
 # API stage
 FROM alpine:latest AS api
@@ -47,18 +47,18 @@ COPY config/base.yaml ./config/
 COPY config/monitor.yaml ./config/
 CMD ["./gosol"]
 
-# Producer stage
-FROM alpine:latest AS txdetails-producer
-WORKDIR /app
-COPY --from=builder /gosol-txdetails-producer ./gosol
-COPY config/base.yaml ./config/
-COPY config/txdetails.yaml ./config/
-CMD ["./gosol"]
+# # Producer stage
+# FROM alpine:latest AS txdetails-producer
+# WORKDIR /app
+# COPY --from=builder /gosol-txdetails-producer ./gosol
+# COPY config/base.yaml ./config/
+# COPY config/txdetails.yaml ./config/
+# CMD ["./gosol"]
 
-# Consumer stage
-FROM alpine:latest AS txdetails-consumer
-WORKDIR /app
-COPY --from=builder /gosol-txdetails-consumer ./gosol
-COPY config/base.yaml ./config/
-COPY config/txdetails.yaml ./config/
-CMD ["./gosol"]
+# # Consumer stage
+# FROM alpine:latest AS txdetails-consumer
+# WORKDIR /app
+# COPY --from=builder /gosol-txdetails-consumer ./gosol
+# COPY config/base.yaml ./config/
+# COPY config/txdetails.yaml ./config/
+# CMD ["./gosol"]

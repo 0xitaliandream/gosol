@@ -2,16 +2,17 @@ package api
 
 import (
 	"gosol/internal/api/handlers"
-	"gosol/internal/db"
+	"gosol/internal/db/clickhouse"
+	"gosol/internal/db/mysql"
 
 	"github.com/gin-gonic/gin"
 )
 
-func NewRouter(database *db.Database) *gin.Engine {
+func NewRouter(clickhouseDB *clickhouse.Database, mysqlDB *mysql.Database) *gin.Engine {
 	router := gin.Default()
 
 	// Inizializza gli handlers
-	walletHandler := handlers.NewWalletHandler(database)
+	walletHandler := handlers.NewWalletHandler(mysqlDB)
 	// transactionHandler := handlers.NewTransactionHandler(database)
 	// jobHandler := handlers.NewJobHandler(database, processor)
 

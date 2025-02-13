@@ -13,7 +13,8 @@ import (
 
 	"gosol/config"
 	"gosol/internal/api"
-	"gosol/internal/db"
+	"gosol/internal/db/clickhouse"
+	"gosol/internal/db/mysql"
 
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
@@ -31,19 +32,33 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	database, err := db.NewDatabase(db.Config{
-		Hosts:    cfg.DBHosts,
-		Database: cfg.DBName,
-		Username: cfg.DBUser,
-		Password: cfg.DBPassword,
-		Debug:    cfg.DBDebug,
+	clickhouseDB, err := clickhouse.NewDatabase(clickhouse.Config{
+		Hosts:    cfg.CHHosts,
+		Database: cfg.CHDb,
+		Username: cfg.CHUser,
+		Password: cfg.CHPassword,
+		Debug:    cfg.CHDebug,
 	}, log)
 	if err != nil {
 		log.Fatalf("Errore nella connessione al database: %v", err)
 	}
-	defer database.Close()
+	defer clickhouseDB.Close()
 
-	router := api.NewRouter(database)
+	mysqlDB, err := mysql.NewDatabase(mysql.Config{
+		Host:     cfg.MySQLHost,
+		Port:     cfg.MySQLPort,
+		Database: cfg.MySQLDb,
+		Username: cfg.MySQLUser,
+		Password: cfg.MySQLPassword,
+		Debug:    cfg.MySQLDebug,
+	}, log)
+
+	err = mysqlDB.FirstMigration()
+	if err != nil {
+		log.Fatalf("Errore durante la migrazione del database: %v", err)
+	}
+
+	router := api.NewRouter(clickhouseDB, mysqlDB)
 
 	g, ctx := errgroup.WithContext(ctx)
 
