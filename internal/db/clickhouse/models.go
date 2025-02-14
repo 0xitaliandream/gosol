@@ -182,18 +182,18 @@ func ParseSolanaTransaction(tx *solana.SolanaTransaction) (TransactionDetail, er
 			StackHeight: stackHeight,
 		}
 
-		if inst.Parsed != nil {
-			instruction.ParsedType = inst.Parsed.Type
-			instruction.ParsedAmount = inst.Parsed.Info.Amount
-			instruction.ParsedAuthority = inst.Parsed.Info.Authority
-			instruction.ParsedDestination = inst.Parsed.Info.Destination
-			instruction.ParsedSource = inst.Parsed.Info.Source
-			instruction.ParsedMint = inst.Parsed.Info.Mint
+		if parsedData, err := inst.GetParsedData(); err == nil && parsedData != nil {
+			instruction.ParsedType = parsedData.Type
+			instruction.ParsedAmount = parsedData.Info.Amount
+			instruction.ParsedAuthority = parsedData.Info.Authority
+			instruction.ParsedDestination = parsedData.Info.Destination
+			instruction.ParsedSource = parsedData.Info.Source
+			instruction.ParsedMint = parsedData.Info.Mint
 
-			if inst.Parsed.Info.TokenAmount != nil {
-				instruction.ParsedTokenAmountAmount = inst.Parsed.Info.TokenAmount.Amount
-				instruction.ParsedTokenAmountDecimals = inst.Parsed.Info.TokenAmount.Decimals
-				instruction.ParsedTokenAmountUiAmountString = inst.Parsed.Info.TokenAmount.UiAmountString
+			if parsedData.Info.TokenAmount != nil {
+				instruction.ParsedTokenAmountAmount = parsedData.Info.TokenAmount.Amount
+				instruction.ParsedTokenAmountDecimals = parsedData.Info.TokenAmount.Decimals
+				instruction.ParsedTokenAmountUiAmountString = parsedData.Info.TokenAmount.UiAmountString
 			}
 		}
 
@@ -214,18 +214,18 @@ func ParseSolanaTransaction(tx *solana.SolanaTransaction) (TransactionDetail, er
 					StackHeight: innerStackHeight,
 				}
 
-				if inner.Parsed != nil {
-					innerInstruction.ParsedType = inner.Parsed.Type
-					innerInstruction.ParsedAmount = inner.Parsed.Info.Amount
-					innerInstruction.ParsedAuthority = inner.Parsed.Info.Authority
-					innerInstruction.ParsedDestination = inner.Parsed.Info.Destination
-					innerInstruction.ParsedSource = inner.Parsed.Info.Source
-					innerInstruction.ParsedMint = inner.Parsed.Info.Mint
+				if parsedData, err := inner.GetParsedData(); err == nil && parsedData != nil {
+					innerInstruction.ParsedType = parsedData.Type
+					innerInstruction.ParsedAmount = parsedData.Info.Amount
+					innerInstruction.ParsedAuthority = parsedData.Info.Authority
+					innerInstruction.ParsedDestination = parsedData.Info.Destination
+					innerInstruction.ParsedSource = parsedData.Info.Source
+					innerInstruction.ParsedMint = parsedData.Info.Mint
 
-					if inner.Parsed.Info.TokenAmount != nil {
-						innerInstruction.ParsedTokenAmountAmount = inner.Parsed.Info.TokenAmount.Amount
-						innerInstruction.ParsedTokenAmountDecimals = inner.Parsed.Info.TokenAmount.Decimals
-						innerInstruction.ParsedTokenAmountUiAmountString = inner.Parsed.Info.TokenAmount.UiAmountString
+					if parsedData.Info.TokenAmount != nil {
+						innerInstruction.ParsedTokenAmountAmount = parsedData.Info.TokenAmount.Amount
+						innerInstruction.ParsedTokenAmountDecimals = parsedData.Info.TokenAmount.Decimals
+						innerInstruction.ParsedTokenAmountUiAmountString = parsedData.Info.TokenAmount.UiAmountString
 					}
 				}
 

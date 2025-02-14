@@ -7,19 +7,12 @@ import (
 
 type TransactionVersion uint64
 
-// TransactionError rappresenta un errore di transazione
-type TransactionError struct {
-	InstructionIndex int    `json:"instructionIndex"`
-	Error            string `json:"error"`
-}
-
 func (v *TransactionVersion) UnmarshalJSON(data []byte) error {
 	if string(data) == `"legacy"` {
 		*v = 1
 		return nil
 	}
 
-	// Prova a decodificare come numero
 	var num uint64
 	if err := json.Unmarshal(data, &num); err != nil {
 		return fmt.Errorf("invalid transaction version: %s", string(data))
@@ -28,15 +21,13 @@ func (v *TransactionVersion) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// MarshalJSON serializza TransactionVersion correttamente
 func (v TransactionVersion) MarshalJSON() ([]byte, error) {
 	if v == 1 {
-		return json.Marshal("legacy") // Se è -1, serializza come "legacy"
+		return json.Marshal("legacy")
 	}
-	return json.Marshal(uint64(v)) // Altrimenti come numero
+	return json.Marshal(uint64(v))
 }
 
-// TokenBalance rappresenta le informazioni sul bilancio dei token
 type TokenBalance struct {
 	AccountIndex  int64         `json:"accountIndex"`
 	Mint          string        `json:"mint"`
@@ -45,34 +36,50 @@ type TokenBalance struct {
 	UiTokenAmount UiTokenAmount `json:"uiTokenAmount"`
 }
 
-// UiTokenAmount rappresenta l'importo del token con le sue varie rappresentazioni
 type UiTokenAmount struct {
 	Amount         string   `json:"amount"`
 	Decimals       int64    `json:"decimals"`
-	UiAmount       *float64 `json:"uiAmount,omitempty"` // Può essere null, quindi usiamo un puntatore
+	UiAmount       *float64 `json:"uiAmount,omitempty"`
 	UiAmountString string   `json:"uiAmountString"`
 }
 
-// InnerInstruction rappresenta un'istruzione interna
 type InnerInstruction struct {
 	Index        uint64        `json:"index"`
 	Instructions []Instruction `json:"instructions"`
 }
 
-// Instruction rappresenta un'istruzione nella transazione
 type Instruction struct {
-	Accounts  []string `json:"accounts"`
-	Data      string   `json:"data"`
-	ProgramId string   `json:"programId"`
-	Program   string   `json:"program,omitempty"`
-	Parsed    *struct {
-		Info ParsedInfo `json:"info"`
-		Type string     `json:"type"`
-	} `json:"parsed,omitempty"`
-	StackHeight *uint64 `json:"stackHeight,omitempty"`
+	Accounts    []string        `json:"accounts"`
+	Data        string          `json:"data"`
+	ProgramId   string          `json:"programId"`
+	Program     string          `json:"program,omitempty"`
+	Parsed      json.RawMessage `json:"parsed,omitempty"`
+	StackHeight *uint64         `json:"stackHeight,omitempty"`
 }
 
-// ParsedInfo rappresenta le informazioni analizzate in un'istruzione
+type ParsedStructured struct {
+	Info ParsedInfo `json:"info"`
+	Type string     `json:"type"`
+}
+
+func (i *Instruction) GetParsedData() (*ParsedStructured, error) {
+	if len(i.Parsed) == 0 {
+		return nil, nil
+	}
+
+	var str string
+	if err := json.Unmarshal(i.Parsed, &str); err == nil {
+		return nil, nil
+	}
+
+	var parsed ParsedStructured
+	if err := json.Unmarshal(i.Parsed, &parsed); err != nil {
+		return nil, err
+	}
+
+	return &parsed, nil
+}
+
 type ParsedInfo struct {
 	Amount         string         `json:"amount,omitempty"`
 	Authority      string         `json:"authority,omitempty"`
@@ -84,7 +91,6 @@ type ParsedInfo struct {
 	NonceAuthority string         `json:"nonceAuthority,omitempty"`
 }
 
-// Message rappresenta la parte del messaggio della transazione
 type Message struct {
 	AccountKeys         []Account     `json:"accountKeys"`
 	Instructions        []Instruction `json:"instructions"`
@@ -96,7 +102,6 @@ type Message struct {
 	} `json:"addressTableLookups,omitempty"`
 }
 
-// Account rappresenta un account nella transazione
 type Account struct {
 	Pubkey   string `json:"pubkey"`
 	Signer   bool   `json:"signer"`
@@ -104,13 +109,11 @@ type Account struct {
 	Writable bool   `json:"writable"`
 }
 
-// TransactionData rappresenta il campo della transazione
 type TransactionData struct {
 	Message    Message  `json:"message"`
 	Signatures []string `json:"signatures"`
 }
 
-// TransactionMeta rappresenta il campo meta nella transazione
 type TransactionMeta struct {
 	Err                  interface{}        `json:"err"`
 	Fee                  uint64             `json:"fee"`
@@ -123,7 +126,6 @@ type TransactionMeta struct {
 	ComputeUnitsConsumed uint64             `json:"computeUnitsConsumed"`
 }
 
-// SolanaTransaction rappresenta la risposta completa della transazione
 type SolanaTransaction struct {
 	Slot        uint64             `json:"slot"`
 	BlockTime   int64              `json:"blockTime"`
