@@ -250,34 +250,39 @@ func (c *Consumer) processTransactions(ctx context.Context, wallet *mysql.Wallet
 	c.log.Infof("Processing wallet %s from %s to %s",
 		wallet.Address, boundaries.lastSignature, boundaries.newestSignature)
 
-	if !wallet.IsLowerBoundSynced {
-		// Check for older transactions
-		if hasOlder, err := c.checkForOlderTransactions(ctx, wallet, boundaries); err != nil {
-			return fmt.Errorf("failed to check older transactions: %w", err)
-		} else if hasOlder {
-			if err := c.processBackwardTransactions(ctx, wallet, boundaries); err != nil {
-				return err
-			}
-			return nil
-		} else {
-			wallet.IsLowerBoundSynced = true
-			if err := c.mysqlDB.GetDB().WithContext(ctx).Save(wallet).Error; err != nil {
-				return fmt.Errorf("failed to update wallet: %w", err)
+	if c.cfg.BackwardMonitor {
+
+		if !wallet.IsLowerBoundSynced {
+			// Check for older transactions
+			if hasOlder, err := c.checkForOlderTransactions(ctx, wallet, boundaries); err != nil {
+				return fmt.Errorf("failed to check older transactions: %w", err)
+			} else if hasOlder {
+				if err := c.processBackwardTransactions(ctx, wallet, boundaries); err != nil {
+					return err
+				}
+				return nil
+			} else {
+				wallet.IsLowerBoundSynced = true
+				if err := c.mysqlDB.GetDB().WithContext(ctx).Save(wallet).Error; err != nil {
+					return fmt.Errorf("failed to update wallet: %w", err)
+				}
 			}
 		}
 	}
 
-	// if boundaries.newestSignature == "" {
-	// 	return nil
-	// }
-	// if hasNewer, err := c.checkForNewerTransactions(ctx, wallet, boundaries); err != nil {
-	// 	return fmt.Errorf("failed to check newer transactions: %w", err)
-	// } else if hasNewer {
-	// 	if err := c.processForwardTransactions(ctx, wallet, boundaries); err != nil {
-	// 		return err
-	// 	}
-	// 	return nil
-	// }
+	if c.cfg.ForwardMonitor {
+		if boundaries.newestSignature == "" {
+			return nil
+		}
+		if hasNewer, err := c.checkForNewerTransactions(ctx, wallet, boundaries); err != nil {
+			return fmt.Errorf("failed to check newer transactions: %w", err)
+		} else if hasNewer {
+			if err := c.processForwardTransactions(ctx, wallet, boundaries); err != nil {
+				return err
+			}
+			return nil
+		}
+	}
 
 	return nil
 }

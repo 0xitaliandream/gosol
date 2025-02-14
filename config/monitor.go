@@ -1,4 +1,3 @@
-// config/worker.go
 package config
 
 import (
@@ -15,6 +14,8 @@ type MonitorConfig struct {
 	RoutingKey            string        `mapstructure:"ROUTING_KEY"`
 	CheckInterval         time.Duration `mapstructure:"CHECK_INTERVAL"`
 	GetSignaturesLimitRpc int           `mapstructure:"GET_SIGNATURES_LIMIT_RPC"`
+	BackwardMonitor       bool          `mapstructure:"BACKWARD_MONITOR"`
+	ForwardMonitor        bool          `mapstructure:"FORWARD_MONITOR"`
 }
 
 func LoadMonitorConfig() (*MonitorConfig, error) {
@@ -36,6 +37,8 @@ func LoadMonitorConfig() (*MonitorConfig, error) {
 	v.SetDefault("ROUTING_KEY", "wallet.check")
 	v.SetDefault("CHECK_INTERVAL", "1m")
 	v.SetDefault("GET_SIGNATURES_LIMIT_RPC", "1")
+	v.SetDefault("BACKWARD_MONITOR", true)
+	v.SetDefault("FORWARD_MONITOR", true)
 
 	v.AutomaticEnv()
 
