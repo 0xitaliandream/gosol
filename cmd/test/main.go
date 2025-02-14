@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"gosol/config"
@@ -18,11 +19,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
-	solana := solana.NewClient(cfg.SolanaRPCURL)
+	solana := solana.NewClient(cfg.SolanaRPCURL, nil)
 
 	signature := "uoPGBv46sX9Z3MSBdJkFXrFyoB5WQnc6HCU2Rw3ZD8a3LwiRNGZkNbtMwUye6yAJRJkNmTo5to6ks5Tu1hxck5n"
 
-	tx, err := solana.GetTransaction(signature)
+	tx, err := solana.GetTransaction(context.TODO(), signature)
 	if err != nil {
 		log.Fatalf("Failed to get transaction: %v", err)
 	}

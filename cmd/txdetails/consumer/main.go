@@ -181,7 +181,7 @@ func (c *Consumer) processMessage(ctx context.Context, delivery amqp.Delivery) e
 	}).Info("Processing transaction details")
 
 	// Get transaction details from Solana
-	tx, err := c.solana.GetTransaction(msg.Signature)
+	tx, err := c.solana.GetTransaction(ctx, msg.Signature)
 	if err != nil {
 		retryCount := 0
 		if count, ok := delivery.Headers["retry-count"].(int32); ok {
@@ -414,7 +414,7 @@ func main() {
 	}
 	defer mysqlDB.Close()
 
-	solana := solana.NewClient(cfg.SolanaRPCURL)
+	solana := solana.NewClient(cfg.SolanaRPCURL, nil)
 
 	consumer, err := NewConsumer(cfg, clickhouseDB, mysqlDB, solana, log)
 	if err != nil {

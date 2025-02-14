@@ -252,7 +252,7 @@ func (c *Consumer) processTransactions(ctx context.Context, wallet *mysql.Wallet
 
 	if !wallet.IsLowerBoundSynced {
 		// Check for older transactions
-		if hasOlder, err := c.checkForOlderTransactions(wallet, boundaries); err != nil {
+		if hasOlder, err := c.checkForOlderTransactions(ctx, wallet, boundaries); err != nil {
 			return fmt.Errorf("failed to check older transactions: %w", err)
 		} else if hasOlder {
 			if err := c.processBackwardTransactions(ctx, wallet, boundaries); err != nil {
@@ -270,7 +270,7 @@ func (c *Consumer) processTransactions(ctx context.Context, wallet *mysql.Wallet
 	if boundaries.newestSignature == "" {
 		return nil
 	}
-	if hasNewer, err := c.checkForNewerTransactions(wallet, boundaries); err != nil {
+	if hasNewer, err := c.checkForNewerTransactions(ctx, wallet, boundaries); err != nil {
 		return fmt.Errorf("failed to check newer transactions: %w", err)
 	} else if hasNewer {
 		if err := c.processForwardTransactions(ctx, wallet, boundaries); err != nil {
@@ -282,16 +282,16 @@ func (c *Consumer) processTransactions(ctx context.Context, wallet *mysql.Wallet
 	return nil
 }
 
-func (c *Consumer) checkForOlderTransactions(w *mysql.Wallet, boundaries *TransactionBoundaries) (bool, error) {
-	transactions, err := c.solana.GetSignaturesForAddress(w.Address, "", boundaries.lastSignature, 1)
+func (c *Consumer) checkForOlderTransactions(ctx context.Context, w *mysql.Wallet, boundaries *TransactionBoundaries) (bool, error) {
+	transactions, err := c.solana.GetSignaturesForAddress(ctx, w.Address, "", boundaries.lastSignature, 1)
 	if err != nil {
 		return false, err
 	}
 	return len(transactions) > 0, nil
 }
 
-func (c *Consumer) checkForNewerTransactions(w *mysql.Wallet, boundaries *TransactionBoundaries) (bool, error) {
-	transactions, err := c.solana.GetSignaturesForAddress(w.Address, boundaries.newestSignature, "", 1)
+func (c *Consumer) checkForNewerTransactions(ctx context.Context, w *mysql.Wallet, boundaries *TransactionBoundaries) (bool, error) {
+	transactions, err := c.solana.GetSignaturesForAddress(ctx, w.Address, boundaries.newestSignature, "", 1)
 	if err != nil {
 		return false, fmt.Errorf("failed to check newer transactions: %w", err)
 	}
@@ -304,7 +304,7 @@ func (c *Consumer) processBackwardTransactions(ctx context.Context, w *mysql.Wal
 
 	for {
 		c.log.Infof("BACK Index: %d", index)
-		transactions, err := c.solana.GetSignaturesForAddress(w.Address, "", before, c.cfg.GetSignaturesLimitRpc)
+		transactions, err := c.solana.GetSignaturesForAddress(ctx, w.Address, "", before, c.cfg.GetSignaturesLimitRpc)
 		if err != nil {
 			return fmt.Errorf("failed to get backward transactions: %w", err)
 		}
@@ -330,7 +330,7 @@ func (c *Consumer) processForwardTransactions(ctx context.Context, w *mysql.Wall
 
 	for {
 		c.log.Infof("FORW Index: %d", index)
-		transactions, err := c.solana.GetSignaturesForAddress(w.Address, until, before, c.cfg.GetSignaturesLimitRpc)
+		transactions, err := c.solana.GetSignaturesForAddress(ctx, w.Address, until, before, c.cfg.GetSignaturesLimitRpc)
 		if err != nil {
 			return fmt.Errorf("failed to get forward transactions: %w", err)
 		}
@@ -433,7 +433,7 @@ func main() {
 	}
 	defer mysqlDB.Close()
 
-	solanaClient := solana.NewClient(cfg.SolanaRPCURL)
+	solanaClient := solana.NewClient(cfg.SolanaRPCURL, nil)
 
 	consumer, err := NewConsumer(cfg, clickhouseDB, mysqlDB, solanaClient, log)
 	if err != nil {
