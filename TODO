@@ -1,1 +1,36 @@
 https://solana.stackexchange.com/questions/13029/parsing-sol-transaction-data-in-golang
+
+
+SELECT
+    mysql_transaction_id,
+    block_time,
+    fee,
+    any(CASE WHEN acc.pubkey = '6SzeGe3uXNwFxsjResVMJgPzfZ3v3BbFCLQKUoMibQQR' 
+        THEN acc.pre_sol_balance END) AS sol_pre,
+    any(CASE WHEN acc.pubkey = '6SzeGe3uXNwFxsjResVMJgPzfZ3v3BbFCLQKUoMibQQR' 
+        THEN acc.post_sol_balance END) AS sol_post,
+    any(CASE WHEN acc.pubkey = '6SzeGe3uXNwFxsjResVMJgPzfZ3v3BbFCLQKUoMibQQR' 
+        THEN acc.sol_change END) AS sol_change_fee_included,
+    groupArrayIf(
+        (
+            tok.mint,
+            tok.decimals,
+            tok.pre_amount,
+            tok.post_amount,
+            tok.change_amount
+        ),
+        tok.mint != ''
+    ) AS token_changes
+FROM transactions_details
+ARRAY JOIN 
+    accounts AS acc
+LEFT ARRAY JOIN 
+    acc.token_balances AS tok
+WHERE 
+    acc.pubkey = '6SzeGe3uXNwFxsjResVMJgPzfZ3v3BbFCLQKUoMibQQR' 
+    OR tok.owner = '6SzeGe3uXNwFxsjResVMJgPzfZ3v3BbFCLQKUoMibQQR'
+GROUP BY 
+    mysql_transaction_id,
+    block_time,
+    fee
+ORDER BY block_time ASC;

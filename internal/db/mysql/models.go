@@ -19,16 +19,16 @@ type Wallet struct {
 
 // Transaction rappresenta il modello per la tabella transactions
 type Transaction struct {
-	ID                  uint      `gorm:"primaryKey;autoIncrement"`
-	Sequence            int64     `gorm:"type:bigint;not null"`
-	WalletID            uint      `gorm:"not null"`
-	Signature           string    `gorm:"type:varchar(255);not null;uniqueIndex"`
-	Slot                uint64    `gorm:"type:bigint unsigned;not null"`
-	BlockTime           *uint64   `gorm:"type:bigint unsigned;null"`
-	Status              *string   `gorm:"type:varchar(50);null" json:"confirmationStatus"`
-	TransactionDetailID *string   `gorm:"type:char(36);null"`
-	CreatedAt           time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
-	UpdatedAt           time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"`
+	ID                            uint      `gorm:"primaryKey;autoIncrement"`
+	Sequence                      int64     `gorm:"type:bigint;not null"`
+	WalletID                      uint      `gorm:"not null"`
+	Signature                     string    `gorm:"type:varchar(255);not null;uniqueIndex"`
+	Slot                          uint64    `gorm:"type:bigint unsigned;not null"`
+	BlockTime                     *uint64   `gorm:"type:bigint unsigned;null"`
+	Status                        *string   `gorm:"type:varchar(50);null" json:"confirmationStatus"`
+	ClickHouseTransactionDetailID *string   `gorm:"type:char(36);null"`
+	CreatedAt                     time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
+	UpdatedAt                     time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"`
 
 	// Relazioni
 	Wallet               *Wallet               `gorm:"foreignKey:WalletID"`

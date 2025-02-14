@@ -52,8 +52,6 @@ func (c *Client) GetSignaturesForAddress(address string, until string, before st
 		return nil, err
 	}
 
-	fmt.Println(string(response))
-
 	var signatures []mysql.Transaction
 	if err := json.Unmarshal(response, &signatures); err != nil {
 		return nil, fmt.Errorf("error unmarshaling signatures: %w", err)

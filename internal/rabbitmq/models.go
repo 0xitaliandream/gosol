@@ -5,6 +5,6 @@ type WalletRabbitMessage struct {
 }
 
 type TransactionRabbitMessage struct {
-	ID        string `json:"id"`
+	ID        uint   `json:"id"`
 	Signature string `json:"signature"`
 }

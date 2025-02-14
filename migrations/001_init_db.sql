@@ -1,64 +1,23 @@
-CREATE TABLE wallets (
-    id UUID DEFAULT generateUUIDv4(),
-    address String,
-    is_lower_bound_synced Bool DEFAULT false,
-    created_at DateTime DEFAULT now(),
-    updated_at DateTime DEFAULT now(),
-) ENGINE = ReplacingMergeTree(updated_at)
-ORDER BY (id);
-
-CREATE TABLE transactions (
-    id UUID DEFAULT generateUUIDv4(),
-    sequence Int64,
-    wallet_id UUID, 
-    signature String,
-    slot UInt64,
-    block_time UInt64,
-    status String,
-    transaction_detail_id UUID,
-    created_at DateTime DEFAULT now(),
-    updated_at DateTime DEFAULT now(),
-) ENGINE = ReplacingMergeTree(updated_at)
-ORDER BY (signature);
-
-CREATE TABLE wallets_monitor_job (
-    id UUID DEFAULT generateUUIDv4(),
-    wallet_id UUID,
-    last_enqueued_at DateTime DEFAULT now(),
-    last_processed_at Nullable(DateTime),
-    created_at DateTime DEFAULT now(),
-    updated_at DateTime DEFAULT now(),
-)
-ENGINE = ReplacingMergeTree(updated_at)
-ORDER BY (wallet_id);
-
-CREATE TABLE transactions_detail_job (
-    id UUID DEFAULT generateUUIDv4(),
-    transaction_id UUID,
-    last_enqueued_at DateTime DEFAULT now(),
-    last_processed_at Nullable(DateTime),
-    created_at DateTime DEFAULT now(),
-    updated_at DateTime DEFAULT now(),
-) ENGINE = ReplacingMergeTree(updated_at)
-ORDER BY (transaction_id);
-
 CREATE TABLE transactions_details
 (
     id UUID DEFAULT generateUUIDv4(),
-    transaction_id UUID,
+    mysql_transaction_id UInt64,
+    block_time Int64,
     accounts Array(Tuple(
         pubkey String,
         signer Bool,
         writable Bool,
         pre_sol_balance UInt64,
         post_sol_balance UInt64,
+        sol_change Int64,
         token_balances Array(Tuple(
             mint String,
             owner String,
             tokenProgramId String,
             decimals Int64,
-            pre_amount String,
-            post_amount String
+            pre_amount Decimal(38, 9),
+            post_amount Decimal(38, 9),
+            change_amount Decimal(38, 9)
             
         ))
     )),
@@ -101,4 +60,4 @@ CREATE TABLE transactions_details
     ))
 )
 ENGINE = MergeTree()
-ORDER BY (transaction_id);
+ORDER BY (mysql_transaction_id);

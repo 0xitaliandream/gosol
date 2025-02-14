@@ -113,20 +113,21 @@ services:
       api:
         condition: service_started
 
-  # txdetails-producer:
-  #   build:
-  #     context: .
-  #     target: txdetails-producer
-  #   depends_on:
-  #     api:
-  #       condition: service_started
+  txdetails-producer:
+    build:
+      context: .
+      target: txdetails-producer
+    depends_on:
+      api:
+        condition: service_started
 
-  # txdetails-consumer:
-  #   build:
-  #     context: .
-  #     target: txdetails-consumer
-  #   deploy:
-  #     replicas: 1
-  #   depends_on:
-  #     api:
-  #       condition: service_started
+  txdetails-consumer:
+    build:
+      context: .
+      target: txdetails-consumer
+    deploy:
+      replicas: 1
+    depends_on:
+      api:
+        condition: service_started
+    restart: always

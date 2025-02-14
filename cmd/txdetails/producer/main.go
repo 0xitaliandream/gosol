@@ -3,14 +3,16 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"gosol/config"
-	"gosol/internal/db"
-	"gosol/internal/models"
+	"gosol/internal/db/clickhouse"
+	"gosol/internal/db/mysql"
+	"gosol/internal/rabbitmq"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sirupsen/logrus"
@@ -18,15 +20,16 @@ import (
 
 // Producer main producer structure
 type Producer struct {
-	conn    *amqp.Connection
-	channel *amqp.Channel
-	db      *db.Database
-	cfg     *config.TxDetailsConfig
-	log     *logrus.Logger
+	conn         *amqp.Connection
+	channel      *amqp.Channel
+	clickhouseDB *clickhouse.Database
+	mysqlDB      *mysql.Database
+	cfg          *config.TxDetailsConfig
+	log          *logrus.Logger
 }
 
 // NewProducer creates a new producer instance
-func NewProducer(cfg *config.TxDetailsConfig, db *db.Database, log *logrus.Logger) (*Producer, error) {
+func NewProducer(cfg *config.TxDetailsConfig, clickhouseDB *clickhouse.Database, mysqlDB *mysql.Database, log *logrus.Logger) (*Producer, error) {
 	conn, err := amqp.Dial(cfg.RabbitURL)
 	if err != nil {
 		return nil, err
@@ -39,11 +42,12 @@ func NewProducer(cfg *config.TxDetailsConfig, db *db.Database, log *logrus.Logge
 	}
 
 	producer := &Producer{
-		conn:    conn,
-		channel: ch,
-		db:      db,
-		cfg:     cfg,
-		log:     log,
+		conn:         conn,
+		channel:      ch,
+		clickhouseDB: clickhouseDB,
+		mysqlDB:      mysqlDB,
+		cfg:          cfg,
+		log:          log,
 	}
 
 	if err := producer.setup(); err != nil {
@@ -134,10 +138,15 @@ func (p *Producer) Close() {
 // produceTransactions publishes transactions that need processing to the queue
 func (p *Producer) produceTransactions(ctx context.Context) error {
 
-	// Get transactions with default tx_details_id that haven't been processed yet
-	transactions, err := p.db.ListTransactionsForDetailsProcessing(ctx)
-	if err != nil {
-		return err
+	var transactions []mysql.Transaction
+
+	if err := p.mysqlDB.GetDB().WithContext(ctx).
+		Joins("LEFT JOIN transaction_detail_jobs ON transactions.id = transaction_detail_jobs.transaction_id").
+		Where("transactions.click_house_transaction_detail_id IS NULL").
+		Where("(transaction_detail_jobs.transaction_id IS NULL OR " +
+			"(transaction_detail_jobs.last_enqueued_at < NOW() - INTERVAL 1 HOUR AND transaction_detail_jobs.last_processed_at IS NULL))").
+		Find(&transactions).Error; err != nil {
+		return fmt.Errorf("failed to get transactions for details processing: %w", err)
 	}
 
 	p.log.Infof("Found %d transactions for details processing", len(transactions))
@@ -146,7 +155,7 @@ func (p *Producer) produceTransactions(ctx context.Context) error {
 	defer cancel()
 
 	for _, tx := range transactions {
-		msg := models.TransactionRabbitMessage{
+		msg := rabbitmq.TransactionRabbitMessage{
 			ID:        tx.ID,
 			Signature: tx.Signature,
 		}
@@ -175,16 +184,18 @@ func (p *Producer) produceTransactions(ctx context.Context) error {
 			continue
 		}
 
-		// Update the transaction's processing timestamp to prevent reprocessing
-		if err := p.db.UpdateTransactionProcessingTimestamp(ctx, tx.ID, false); err != nil {
-			p.log.Errorf("Failed to update processing timestamp: %v", err)
-			continue
+		if err := p.mysqlDB.GetDB().WithContext(ctx).
+			Exec(`INSERT INTO transaction_detail_jobs (transaction_id, last_enqueued_at, created_at, updated_at)
+	  VALUES (?, NOW(), NOW(), NOW())
+	  ON DUPLICATE KEY UPDATE last_enqueued_at = NOW(), updated_at = NOW()`,
+				tx.ID).Error; err != nil {
+			return fmt.Errorf("failed to update transaction processing timestamp: %w", err)
 		}
 
-		p.log.WithFields(logrus.Fields{
-			"tx_id":     tx.ID,
-			"signature": tx.Signature,
-		}).Info("Published transaction for details processing")
+		// p.log.WithFields(logrus.Fields{
+		// 	"tx_id":     tx.ID,
+		// 	"signature": tx.Signature,
+		// }).Info("Published transaction for details processing")
 	}
 
 	return nil
@@ -218,19 +229,32 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	database, err := db.NewDatabase(db.Config{
-		Hosts:    cfg.BaseConfig.DBHosts,
-		Database: cfg.BaseConfig.DBName,
-		Username: cfg.BaseConfig.DBUser,
-		Password: cfg.BaseConfig.DBPassword,
-		Debug:    cfg.BaseConfig.DBDebug,
+	clickhouseDB, err := clickhouse.NewDatabase(clickhouse.Config{
+		Hosts:    cfg.CHHosts,
+		Database: cfg.CHDb,
+		Username: cfg.CHUser,
+		Password: cfg.CHPassword,
+		Debug:    cfg.CHDebug,
 	}, log)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		log.Fatalf("Errore nella connessione al database: %v", err)
 	}
-	defer database.Close()
+	defer clickhouseDB.Close()
 
-	producer, err := NewProducer(cfg, database, log)
+	mysqlDB, err := mysql.NewDatabase(mysql.Config{
+		Host:     cfg.MySQLHost,
+		Port:     cfg.MySQLPort,
+		Database: cfg.MySQLDb,
+		Username: cfg.MySQLUser,
+		Password: cfg.MySQLPassword,
+		Debug:    cfg.MySQLDebug,
+	}, log)
+	if err != nil {
+		log.Fatalf("Errore nella connessione al database: %v", err)
+	}
+	defer mysqlDB.Close()
+
+	producer, err := NewProducer(cfg, clickhouseDB, mysqlDB, log)
 	if err != nil {
 		log.Fatalf("Failed to create producer: %v", err)
 	}
