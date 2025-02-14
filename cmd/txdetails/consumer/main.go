@@ -183,18 +183,7 @@ func (c *Consumer) processMessage(ctx context.Context, delivery amqp.Delivery) e
 	// Get transaction details from Solana
 	tx, err := c.solana.GetTransaction(ctx, msg.Signature)
 	if err != nil {
-		retryCount := 0
-		if count, ok := delivery.Headers["retry-count"].(int32); ok {
-			retryCount = int(count)
-		}
-
-		if retryCount < 3 { // Max 3 retries
-			if err := c.scheduleRetry(msg, retryCount); err != nil {
-				return fmt.Errorf("failed to schedule retry: %w", err)
-			}
-			return fmt.Errorf("transaction not found, scheduled retry: %w", err)
-		}
-		return fmt.Errorf("max retries reached for transaction: %w", err)
+		return fmt.Errorf("error getting transaction: %w", err)
 	}
 
 	txDetail, err := clickhouse.ParseSolanaTransaction(tx)
