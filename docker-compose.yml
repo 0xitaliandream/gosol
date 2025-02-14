@@ -1,5 +1,12 @@
 version: '3.8'
 
+# Define named volumes
+volumes:
+  clickhouse_data:
+  clickhouse_logs:
+  mysql_data:
+  rabbitmq_data:
+
 services:
   clickhouse:
     image: clickhouse/clickhouse-server:latest
@@ -9,6 +16,8 @@ services:
       - "9000:9000"   # Native port
       - "9009:9009"   # Inter-server port
     volumes:
+      - clickhouse_data:/var/lib/clickhouse    # Data directory
+      - clickhouse_logs:/var/log/clickhouse-server  # Log directory
       - ./migrations:/docker-entrypoint-initdb.d
     healthcheck:
       test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
@@ -29,6 +38,8 @@ services:
     ports:
       - "5672:5672"   # AMQP protocol port
       - "15672:15672" # Management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq    # RabbitMQ data directory
     environment:
       - RABBITMQ_DEFAULT_USER=guest
       - RABBITMQ_DEFAULT_PASS=guest
@@ -43,6 +54,8 @@ services:
     container_name: mysql
     ports:
       - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql    # MySQL data directory
     environment:
       - MYSQL_ROOT_PASSWORD=root
       - MYSQL_DATABASE=solanadb
@@ -126,7 +139,7 @@ services:
       context: .
       target: txdetails-consumer
     deploy:
-      replicas: 1
+      replicas: 2
     depends_on:
       api:
         condition: service_started
