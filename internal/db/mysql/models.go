@@ -9,6 +9,8 @@ type Wallet struct {
 	ID                 uint      `gorm:"primaryKey;autoIncrement"`
 	Address            string    `gorm:"type:varchar(255);not null"`
 	IsLowerBoundSynced bool      `gorm:"default:false"`
+	LowerSignatureBound string    `gorm:"type:varchar(255);null"`
+	LowerTimestampBound uint64    `gorm:"type:bigint unsigned;null"`
 	CreatedAt          time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
 	UpdatedAt          time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"`
 

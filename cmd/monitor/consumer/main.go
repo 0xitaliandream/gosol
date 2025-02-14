@@ -267,17 +267,17 @@ func (c *Consumer) processTransactions(ctx context.Context, wallet *mysql.Wallet
 		}
 	}
 
-	if boundaries.newestSignature == "" {
-		return nil
-	}
-	if hasNewer, err := c.checkForNewerTransactions(ctx, wallet, boundaries); err != nil {
-		return fmt.Errorf("failed to check newer transactions: %w", err)
-	} else if hasNewer {
-		if err := c.processForwardTransactions(ctx, wallet, boundaries); err != nil {
-			return err
-		}
-		return nil
-	}
+	// if boundaries.newestSignature == "" {
+	// 	return nil
+	// }
+	// if hasNewer, err := c.checkForNewerTransactions(ctx, wallet, boundaries); err != nil {
+	// 	return fmt.Errorf("failed to check newer transactions: %w", err)
+	// } else if hasNewer {
+	// 	if err := c.processForwardTransactions(ctx, wallet, boundaries); err != nil {
+	// 		return err
+	// 	}
+	// 	return nil
+	// }
 
 	return nil
 }
@@ -313,11 +313,68 @@ func (c *Consumer) processBackwardTransactions(ctx context.Context, w *mysql.Wal
 			break
 		}
 
+		// Check if we've reached the LowerSignatureBound
+		if w.LowerSignatureBound != "" {
+			// Find the index of the bound signature
+			boundIndex := -1
+			for i, tx := range transactions {
+				if tx.Signature == w.LowerSignatureBound {
+					boundIndex = i
+					break
+				}
+			}
+
+			if boundIndex != -1 {
+				// Save only transactions up to the bound (inclusive)
+				if err := c.saveTransactions(ctx, w.ID, transactions[:boundIndex+1], &index, false); err != nil {
+					return err
+				}
+				// We found the bound, mark as synced and exit
+				w.IsLowerBoundSynced = true
+				if err := c.mysqlDB.GetDB().WithContext(ctx).Save(w).Error; err != nil {
+					return fmt.Errorf("failed to update wallet sync status: %w", err)
+				}
+				return nil
+			}
+		}
+
+		// Check timestamp bound if no signature bound is set or not yet reached
+		if w.LowerSignatureBound == "" && w.LowerTimestampBound > 0 {
+			// Find the first transaction that's older than our bound
+			boundIndex := -1
+			for i, tx := range transactions {
+				if tx.BlockTime != nil && *tx.BlockTime <= w.LowerTimestampBound {
+					boundIndex = i
+					break
+				}
+			}
+
+			if boundIndex != -1 {
+				// Save only transactions up to the bound (inclusive)
+				if err := c.saveTransactions(ctx, w.ID, transactions[:boundIndex+1], &index, false); err != nil {
+					return err
+				}
+				// We reached the timestamp bound, mark as synced and exit
+				w.IsLowerBoundSynced = true
+				if err := c.mysqlDB.GetDB().WithContext(ctx).Save(w).Error; err != nil {
+					return fmt.Errorf("failed to update wallet sync status: %w", err)
+				}
+				return nil
+			}
+		}
+
+		// If no bounds are hit, save all transactions and continue
 		if err := c.saveTransactions(ctx, w.ID, transactions, &index, false); err != nil {
 			return err
 		}
 
 		before = transactions[len(transactions)-1].Signature
+	}
+
+	// If we get here without finding any bounds, we've reached the end naturally
+	w.IsLowerBoundSynced = true
+	if err := c.mysqlDB.GetDB().WithContext(ctx).Save(w).Error; err != nil {
+		return fmt.Errorf("failed to update wallet sync status: %w", err)
 	}
 
 	return nil

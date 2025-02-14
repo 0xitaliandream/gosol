@@ -20,6 +20,8 @@ func NewWalletHandler(database *mysql.Database) *WalletHandler {
 func (h *WalletHandler) Create(c *gin.Context) {
 	var input struct {
 		Address string `json:"address" binding:"required"`
+		LowerSignatureBound string  `json:"lower_signature_bound,omitempty"`
+        LowerTimestampBound uint64  `json:"lower_timestamp_bound,omitempty"`
 	}
 
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -30,6 +32,13 @@ func (h *WalletHandler) Create(c *gin.Context) {
 	wallet := mysql.Wallet{
 		Address: input.Address,
 	}
+
+	if input.LowerSignatureBound != "" {
+        wallet.LowerSignatureBound = input.LowerSignatureBound
+    }
+    if input.LowerTimestampBound != 0 {
+        wallet.LowerTimestampBound = input.LowerTimestampBound
+    }
 
 	// Usa direttamente GORM per l'insert
 	if err := h.db.GetDB().Create(&wallet).Error; err != nil {

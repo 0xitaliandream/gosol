@@ -80,7 +80,7 @@ services:
       clickhouse:
         condition: service_healthy
     environment:
-      - VITE_CLICKHOUSE_URL=http://127.0.0.1:8123
+      - VITE_CLICKHOUSE_URL=http://148.251.15.40:8123
       - CLICKHOUSE_USER=default
       - CLICKHOUSE_PASS=clickhouse
 
