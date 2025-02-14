@@ -21,7 +21,7 @@ func main() {
 	}
 	solana := solana.NewClient(cfg.SolanaRPCURL, nil)
 
-	signature := "uoPGBv46sX9Z3MSBdJkFXrFyoB5WQnc6HCU2Rw3ZD8a3LwiRNGZkNbtMwUye6yAJRJkNmTo5to6ks5Tu1hxck5n"
+	signature := "2gzUfQheMcdH7EeztdVDsSzVN9X1EXdPo4YYRDxa8r7sXL7zV3j1nsNvXWV1z5qfVUeGDMPjw9YCVjH8hUW2c6Xc"
 
 	tx, err := solana.GetTransaction(context.TODO(), signature)
 	if err != nil {
